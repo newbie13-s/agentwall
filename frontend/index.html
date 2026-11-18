@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentWall — The Agent ID holders' wall</title>
+<style>
+  :root {
+    --bg: #0b0e11; --panel: #161a1e; --panel2: #1e2329; --line: #2b3139;
+    --text: #eaecef; --muted: #848e9c; --accent: #f0b90b; --accent-text: #181a20;
+    --ok: #0ecb81; --err: #f6465d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: var(--bg); color: var(--text); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { text-align: center; margin-bottom: 28px; }
+  h1 { font-size: 2.2rem; margin: 0 0 6px; }
+  h1 .gold { color: var(--accent); }
+  .subtitle { color: var(--muted); margin: 0; font-size: 1.02rem; }
+  .desc { color: var(--muted); font-size: .92rem; line-height: 1.55; margin: 14px auto 0; max-width: 620px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
+           padding: 10px 16px; font-weight: 600; cursor: pointer; font-size: .95rem; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+             color: var(--text); padding: 10px; font-size: .95rem; resize: vertical; min-height: 74px; }
+  .muted { color: var(--muted); font-size: .88rem; }
+  .notice { border-radius: 8px; padding: 12px 14px; font-size: .92rem; line-height: 1.5; display: none; }
+  .notice.warn { background: #2b2103; border: 1px solid #6b5310; color: #f5d67b; display: block; }
+  .notice.err  { background: #2d1219; border: 1px solid #6e2434; color: #ff9db0; display: block; }
+  .notice.ok   { background: #0d2b1e; border: 1px solid #14532d; color: #7be2b8; display: block; }
+  .stat { font-size: 1.6rem; font-weight: 700; }
+  .sign-item { border-top: 1px solid var(--line); padding: 12px 2px; }
+  .sign-item:first-child { border-top: 0; }
+  .sign-meta { color: var(--muted); font-size: .8rem; margin-bottom: 4px; }
+  .sign-msg { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+  .addr { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  footer { color: var(--muted); font-size: .8rem; text-align: center; line-height: 1.6; margin-top: 26px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Agent<span class="gold">Wall</span></h1>
+    <p class="subtitle">The Agent ID holders' wall — sign the chain, prove your Agent ID</p>
+    <p class="desc">
+      AgentWall is a public on-chain guestbook on BNB Chain. Only wallets that hold a
+      Binance <b>Agent ID</b> can sign it — the contract checks the official Agent ID registry
+      before accepting a message. No tokens, no funds, no rewards: just identity, on-chain.
+    </p>
+  </header>
+
+  <div id="banner" class="notice warn" style="display:none"></div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="stat" id="totalSigns">–</div>
+        <div class="muted">signs on the wall</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted addr" id="accountLabel">Not connected</div>
+      <button id="connectBtn">Connect wallet</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="holderNotice" class="notice warn" style="display:none">
+      This wall is for Agent ID holders — claim an Agent ID in the Binance app
+      (Wallet → Agent ID), then come back and sign.
+    </div>
+    <div id="cooldownNotice" class="notice warn" style="display:none"></div>
+    <div id="statusNotice" class="notice"></div>
+    <textarea id="msgInput" maxlength="1000" placeholder="Write your message for the wall (max 280 bytes)…" disabled></textarea>
+    <div class="row" style="margin-top:10px">
+      <span class="muted"><span id="byteCount">0</span> / 280 bytes</span>
+      <div class="spacer"></div>
+      <button id="signBtn" disabled>Sign the wall</button>
+    </div>
+    <p class="muted" style="margin-bottom:0">
+      One sign per address every 24 hours. Signing writes your message on-chain and costs a
+      small network fee (gas) paid to the network — the AgentWall contract itself never
+      receives or holds any funds.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <b>The wall</b>
+      <div class="spacer"></div>
+      <button class="ghost" id="refreshBtn">Refresh</button>
+    </div>
+    <div id="wallList"><p class="muted">Loading…</p></div>
+  </div>
+
+  <footer>
+    AgentWall is an open-source demo of Agent ID as identity &amp; access control, built for the
+    Binance Wallet Agent ID Hackathon.<br>
+    Agent ID registry (BNB Chain): <span class="addr">0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+"use strict";
+/* ================= CONFIG — fill in after deployment ================= */
+const CONTRACT_ADDRESS = "0xa9689f8c6e397ea6dfa61ef83dbd2916e5913ee3"; // AgentWall on BNB Chain mainnet
+const CHAIN_ID = 56; // BNB Chain
+const PAGE_SIZE = 50;
+/* ===================================================================== */
+
+const ABI = [
+  "function hasAgentId(address account) view returns (bool)",
+  "function sign(string message)",
+  "function totalSigns() view returns (uint256)",
+  "function lastSignAt(address) view returns (uint256)",
+  "function getSigns(uint256 offset, uint256 limit) view returns (tuple(address signer, string message, uint256 timestamp)[])"
+];
+
+const $ = (id) => document.getElementById(id);
+const deployed = /^0x[0-9a-fA-F]{40}$/.test(CONTRACT_ADDRESS) && !/^0x0+$/.test(CONTRACT_ADDRESS);
+
+let provider, signer, account, contract;
+
+function showNotice(id, text, kind) {
+  const el = $(id);
+  el.className = "notice" + (kind ? " " + kind : "");
+  el.textContent = text || "";
+  el.style.display = text ? "block" : "none";
+}
+function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
+function fmtTime(ts) {
+  return new Date(Number(ts) * 1000).toLocaleString(undefined,
+    { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+async function readOnlyContract() {
+  // Public read via the user's injected provider if present, else a public RPC.
+  if (window.ethereum) {
+    return new ethers.Contract(CONTRACT_ADDRESS, ABI, new ethers.BrowserProvider(window.ethereum));
+  }
+  const rpc = new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org");
+  return new ethers.Contract(CONTRACT_ADDRESS, ABI, rpc);
+}
+
+async function loadWall() {
+  if (!deployed) { $("wallList").innerHTML = ""; $("totalSigns").textContent = "–"; return; }
+  try {
+    const c = await readOnlyContract();
+    const total = Number(await c.totalSigns());
+    $("totalSigns").textContent = total.toLocaleString();
+    const list = $("wallList");
+    list.innerHTML = "";
+    if (total === 0) {
+      list.innerHTML = '<p class="muted">No signs yet — be the first Agent ID holder on the wall.</p>';
+      return;
+    }
+    const offset = Math.max(0, total - PAGE_SIZE);
+    const signs = await c.getSigns(offset, PAGE_SIZE);
+    // newest first
+    [...signs].reverse().forEach((s) => {
+      const item = document.createElement("div");
+      item.className = "sign-item";
+      const meta = document.createElement("div");
+      meta.className = "sign-meta";
+      meta.textContent = shortAddr(s.signer) + " · " + fmtTime(s.timestamp);
+      const msg = document.createElement("div");
+      msg.className = "sign-msg";
+      msg.textContent = s.message; // textContent: on-chain text is never injected as HTML
+      item.appendChild(meta); item.appendChild(msg);
+      list.appendChild(item);
+    });
+    if (total > PAGE_SIZE) {
+      const more = document.createElement("p");
+      more.className = "muted";
+      more.textContent = "Showing the latest " + PAGE_SIZE + " of " + total + " signs.";
+      list.appendChild(more);
+    }
+  } catch (e) {
+    $("wallList").innerHTML = '<p class="muted">Could not load the wall. Check your connection and refresh.</p>';
+  }
+}
+
+async function refreshFormState() {
+  const canUse = deployed && signer && account;
+  let holder = false, cooling = false;
+  if (canUse) {
+    try {
+      holder = await contract.hasAgentId(account);
+      if (holder) {
+        const last = Number(await contract.lastSignAt(account));
+        if (last > 0 && Date.now() / 1000 < last + 86400) {
+          cooling = true;
+          showNotice("cooldownNotice",
+            "You already signed — you can sign again after " + fmtTime(last + 86400) + ".", "warn");
+        } else {
+          showNotice("cooldownNotice", "", "");
+        }
+      }
+    } catch (e) { /* leave form disabled on read errors */ }
+  }
+  $("holderNotice").style.display = (canUse && !holder) ? "block" : "none";
+  $("msgInput").disabled = !(canUse && holder && !cooling);
+  $("signBtn").disabled = !(canUse && holder && !cooling);
+}
+
+async function connect() {
+  showNotice("statusNotice", "", "");
+  if (!window.ethereum) {
+    showNotice("statusNotice", "No wallet found. Open this page in a browser with a Web3 wallet (e.g. Binance Wallet) installed.", "err");
+    return;
+  }
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== CHAIN_ID) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0x" + CHAIN_ID.toString(16) }]
+        });
+        provider = new ethers.BrowserProvider(window.ethereum);
+      } catch (e) {
+        showNotice("statusNotice", "Please switch your wallet to BNB Chain (chainId 56).", "err");
+        return;
+      }
+    }
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+    $("accountLabel").textContent = shortAddr(account);
+    $("connectBtn").textContent = "Connected";
+    $("connectBtn").disabled = true;
+    await refreshFormState();
+  } catch (e) {
+    showNotice("statusNotice", "Connection was rejected or failed. Nothing was signed.", "err");
+  }
+}
+
+async function doSign() {
+  const message = $("msgInput").value;
+  const bytes = new TextEncoder().encode(message).length;
+  if (bytes === 0) { showNotice("statusNotice", "Write a message first.", "err"); return; }
+  if (bytes > 280) { showNotice("statusNotice", "Message is " + bytes + " bytes — the limit is 280 bytes.", "err"); return; }
+  $("signBtn").disabled = true;
+  showNotice("statusNotice", "Confirm the transaction in your wallet…", "ok");
+  try {
+    const tx = await contract.sign(message);
+    showNotice("statusNotice", "Transaction sent — waiting for confirmation…", "ok");
+    await tx.wait();
+    $("msgInput").value = ""; updateCount();
+    showNotice("statusNotice", "You are on the wall. Welcome, Agent.", "ok");
+    await loadWall();
+  } catch (e) {
+    const msg = (e && e.shortMessage) || "Transaction failed or was rejected. Nothing was written.";
+    showNotice("statusNotice", msg, "err");
+  }
+  await refreshFormState();
+}
+
+function updateCount() {
+  $("byteCount").textContent = new TextEncoder().encode($("msgInput").value).length;
+}
+
+$("connectBtn").addEventListener("click", connect);
+$("signBtn").addEventListener("click", doSign);
+$("refreshBtn").addEventListener("click", loadWall);
+$("msgInput").addEventListener("input", updateCount);
+if (window.ethereum) {
+  window.ethereum.on && window.ethereum.on("accountsChanged", () => location.reload());
+  window.ethereum.on && window.ethereum.on("chainChanged", () => location.reload());
+}
+
+if (!deployed) {
+  showNotice("banner", "Demo build: the AgentWall contract is not deployed yet, so the wall is read-disabled. Set CONTRACT_ADDRESS in this file after deployment.", "warn");
+}
+loadWall();
+</script>
+</body>
+</html>
